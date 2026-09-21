@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>@{{ account.username }} — Fintwit Weekly</title>
+<link rel="stylesheet" href="{{ base }}assets/style.css">
+</head>
+<body>
+
+<div class="hdr">
+  <span class="hdr-logo">FINTWIT WEEKLY</span>
+  <span class="hdr-meta">AUTHOR <b>@{{ account.username }}</b></span>
+  <span class="hdr-meta">WEEK <b>{{ week_start }}</b> → <b>{{ week_end }}</b></span>
+  <span class="hdr-nav"><a href="{{ base }}index.html">← DASHBOARD</a></span>
+</div>
+
+<div class="wrap">
+  <a href="{{ base }}index.html" class="back">← back to dashboard</a>
+
+  <!-- ── Author header ── -->
+  <div style="margin-bottom:16px">
+    <div style="font-family:var(--mono); font-size:18px; color:var(--text); margin-bottom:3px">
+      {{ account.display_name or account.username }}
+      {% if account.is_blue_verified %}<span style="color:#1d9bf0; font-size:12px"> ✓</span>{% endif %}
+    </div>
+    <div style="font-family:var(--mono); font-size:12px; color:var(--muted); margin-bottom:6px">
+      @{{ account.username }}
+      {% if account.followers %} · <b style="color:var(--text)">{{ '{:,}'.format(account.followers) }}</b> followers{% endif %}
+    </div>
+    {% if account.description %}
+    <div style="font-size:11px; color:var(--muted); max-width:500px; line-height:1.6">{{ account.description }}</div>
+    {% endif %}
+  </div>
+
+  <!-- ── Stats ── -->
+  <div class="stats">
+    <div>
+      <div class="stat-lbl">Mentions this week</div>
+      <div class="stat-val">{{ week_mentions | length }}</div>
+    </div>
+    <div>
+      <div class="stat-lbl">Tickers mentioned</div>
+      <div class="stat-val">{{ week_mentions | map(attribute='ticker') | list | unique | list | length }}</div>
+    </div>
+  </div>
+
+  <!-- ── Activity sparkline ── -->
+  <div class="sec">
+    <div class="sec-title">12-Week Activity</div>
+    <div style="padding:8px 0">{{ sparkline(activity_history, w=360, h=40) | safe }}</div>
+  </div>
+
+  <!-- ── This week's mentions ── -->
+  <div class="sec">
+    <div class="sec-title">Mentions This Week</div>
+    <table>
+      <thead><tr><th>Ticker</th><th>Tweet</th><th>Sentiment</th><th></th></tr></thead>
+      <tbody>
+      {% for m in week_mentions %}
+      <tr>
+        <td class="tk"><a href="{{ base }}tickers/{{ m.ticker }}.html">${{ m.ticker }}</a></td>
+        <td><div class="tw-text" title="{{ m.text | e }}">{{ m.text | truncate(90) }}</div></td>
+        <td><span class="badge badge-un">unscored</span></td>
+        <td><a href="{{ m.url }}" target="_blank" rel="noopener" class="ext">↗</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="muted">No mentions this week</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── Top tickers all-time ── -->
+  <div class="sec">
+    <div class="sec-title">Top Tickers All-Time</div>
+    <table style="max-width:300px">
+      <thead><tr><th>Ticker</th><th class="r">Mentions</th></tr></thead>
+      <tbody>
+      {% for t in top_tickers %}
+      <tr>
+        <td class="tk"><a href="{{ base }}tickers/{{ t.ticker }}.html">${{ t.ticker }}</a></td>
+        <td class="r">{{ t.count }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="2" class="muted">No data</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── Sentiment profile ── -->
+  <div class="sec">
+    <div class="sec-title">Sentiment Profile</div>
+    <span class="muted" style="font-size:11px">Unscored — run analyze_claude.py to generate profile</span>
+  </div>
+
+  <div class="foot">
+    <span>week <b>{{ week_start }}</b></span>
+    <span><a href="{{ base }}index.html">dashboard</a></span>
+  </div>
+
+</div>
+</body>
+</html>

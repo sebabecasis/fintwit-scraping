@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${{ ticker }} — Fintwit Weekly</title>
+<link rel="stylesheet" href="{{ base }}assets/style.css">
+<style>
+.dl-btn {
+  font-family: var(--mono); font-size: 10px; font-weight: bold;
+  color: var(--accent); background: transparent;
+  border: 1px solid var(--accent); padding: 4px 10px;
+  cursor: pointer; letter-spacing: .08em; text-transform: uppercase;
+}
+.dl-btn:hover { background: rgba(245,158,11,.08); }
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <span class="hdr-logo">FINTWIT WEEKLY</span>
+  <span class="hdr-meta">TICKER <b>${{ ticker }}</b></span>
+  <span class="hdr-meta">WEEK <b>{{ week_start }}</b> → <b>{{ week_end }}</b></span>
+  <span class="hdr-nav"><a href="{{ base }}index.html">← DASHBOARD</a></span>
+</div>
+
+<div class="wrap">
+  <a href="{{ base }}index.html" class="back">← back to dashboard</a>
+
+  <!-- ── Header stats ── -->
+  <div class="stats">
+    <div>
+      <div class="stat-lbl">Mentions this week</div>
+      <div class="stat-val">{{ tweets | length }}</div>
+    </div>
+    {% if sent %}
+    <div>
+      <div class="stat-lbl">Bullish</div>
+      <div class="stat-val bull">{{ sent.bullish }}</div>
+    </div>
+    <div>
+      <div class="stat-lbl">Bearish</div>
+      <div class="stat-val bear">{{ sent.bearish }}</div>
+    </div>
+    <div>
+      <div class="stat-lbl">Neutral</div>
+      <div class="stat-val muted">{{ sent.neutral }}</div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- ── Sparkline ── -->
+  <div class="sec">
+    <div class="sec-title">12-Week Mention History</div>
+    <div style="padding:8px 0">
+      {{ sparkline(history, w=360, h=48) | safe }}
+    </div>
+  </div>
+
+  <!-- ── Sentiment ── -->
+  {% if sent %}
+  <div class="sec">
+    <div class="sec-title">Sentiment</div>
+    <div style="margin-bottom:8px; max-width:300px">{{ sent_bar(sent) | safe }}</div>
+    {% if sent.bull_text or sent.bear_text %}
+    <div style="display:flex; gap:20px; font-size:11px">
+      {% if sent.bull_text %}
+      <div style="max-width:280px">
+        <div style="color:var(--bull); font-family:var(--mono); font-size:10px; margin-bottom:3px">▲ BULL CASE</div>
+        <div>{{ sent.bull_text }}</div>
+      </div>
+      {% endif %}
+      {% if sent.bear_text %}
+      <div style="max-width:280px">
+        <div style="color:var(--bear); font-family:var(--mono); font-size:10px; margin-bottom:3px">▼ BEAR CASE</div>
+        <div>{{ sent.bear_text }}</div>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+  {% else %}
+  <div class="sec">
+    <div class="sec-title">Sentiment</div>
+    <span class="muted">Unscored — run analyze_claude.py</span>
+  </div>
+  {% endif %}
+
+  <!-- ── This week's tweets ── -->
+  <div class="sec">
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px">
+      <div class="sec-title" style="margin-bottom:0; border-bottom:none">
+        Tweets Mentioning ${{ ticker }} — Week of {{ week_start }}
+      </div>
+      <button class="dl-btn" onclick="downloadTxt()">↓ Download .txt</button>
+    </div>
+    <table id="tweets-table">
+      <thead>
+        <tr>
+          <th>Author</th>
+          <th>Tweet</th>
+          <th>Sentiment</th>
+          <th>Conv</th>
+          <th>Rationale</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for t in tweets %}
+      <tr>
+        <td class="tk" style="white-space:nowrap">
+          <a href="{{ base }}authors/{{ t.username }}.html">@{{ t.username }}</a>
+        </td>
+        <td><div class="tw-text" title="{{ t.text | e }}">{{ t.text | truncate(90) }}</div></td>
+        <td>
+          {% if t.sentiment %}
+            {% if t.sentiment == 'bullish' %}<span class="badge badge-bull">bullish</span>
+            {% elif t.sentiment == 'bearish' %}<span class="badge badge-bear">bearish</span>
+            {% elif t.sentiment == 'neutral' %}<span class="badge badge-neut">neutral</span>
+            {% else %}<span class="badge badge-un">unclear</span>{% endif %}
+          {% else %}<span class="badge badge-un">unscored</span>{% endif %}
+        </td>
+        <td>
+          {% if t.conviction %}
+            <span class="dots" title="conviction {{ t.conviction }}/5">
+              {%- for i in range(t.conviction) -%}·{%- endfor -%}
+              {%- for i in range(5 - t.conviction) -%}<span class="muted">·</span>{%- endfor -%}
+            </span>
+          {% else %}<span class="dots muted">·····</span>{% endif %}
+        </td>
+        <td><span class="rationale">{{ t.rationale or "—" }}</span></td>
+        <td><a href="{{ t.url }}" target="_blank" rel="noopener" class="ext">↗</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="muted">No tweets this week</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── History panel (collapsed) ── -->
+  <details>
+    <summary>Prior Weeks</summary>
+    <div style="padding-top:12px">
+
+      {% if prior_tweets %}
+        {% for week, week_tweets in prior_tweets %}
+        <div style="margin-bottom:16px">
+          <div style="font-family:var(--mono); font-size:10px; color:var(--muted);
+                      letter-spacing:.08em; text-transform:uppercase;
+                      padding-bottom:4px; border-bottom:1px solid var(--border2);
+                      margin-bottom:6px">Week of {{ week }}</div>
+          <table>
+            <thead>
+              <tr><th>Author</th><th>Tweet</th><th>Date</th><th></th></tr>
+            </thead>
+            <tbody>
+            {% for t in week_tweets %}
+            <tr>
+              <td class="tk" style="white-space:nowrap">
+                <a href="{{ base }}authors/{{ t.username }}.html">@{{ t.username }}</a>
+              </td>
+              <td><div class="tw-text" title="{{ t.text | e }}">{{ t.text | truncate(90) }}</div></td>
+              <td class="muted r" style="white-space:nowrap">{{ t.date }}</td>
+              <td><a href="{{ t.url }}" target="_blank" rel="noopener" class="ext">↗</a></td>
+            </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endfor %}
+      {% else %}
+        <span class="muted">No prior-week tweets on record</span>
+      {% endif %}
+
+      <div style="margin-top:12px; border-top:1px solid var(--border2); padding-top:10px">
+        <div style="font-family:var(--mono); font-size:10px; color:var(--muted);
+                    letter-spacing:.08em; text-transform:uppercase; margin-bottom:6px">
+          Weekly Mention Counts
+        </div>
+        <table style="max-width:260px">
+          <thead><tr><th>Week</th><th class="r">Mentions</th></tr></thead>
+          <tbody>
+          {% for week, count in history_weeks %}
+          <tr>
+            <td class="muted" style="font-family:var(--mono)">{{ week }}</td>
+            <td class="r">{{ count }}</td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+  </details>
+
+  <div class="foot">
+    <span>week <b>{{ week_start }}</b></span>
+    <span><a href="{{ base }}index.html">dashboard</a></span>
+  </div>
+
+</div><!-- /wrap -->
+
+<!-- ── Tweet data for download ── -->
+<script>
+var TICKER    = {{ ticker | tojson }};
+var WEEK      = {{ week_start | tojson }};
+var SENT      = {{ sent | tojson if sent else 'null' }};
+var TWEETS    = {{ tweets | tojson }};
+
+function downloadTxt() {
+  var lines = [];
+
+  lines.push('$' + TICKER + ' \u2014 Week of ' + WEEK);
+  lines.push('');
+
+  lines.push('SENTIMENT SUMMARY');
+  if (SENT) {
+    lines.push(
+      'Bullish: ' + SENT.bullish +
+      ' | Bearish: ' + SENT.bearish +
+      ' | Neutral: ' + SENT.neutral +
+      ' | Unclear: 0'
+    );
+  } else {
+    lines.push('Bullish: unscored | Bearish: unscored | Neutral: unscored | Unclear: unscored');
+  }
+  lines.push('');
+
+  lines.push('BULL CASE');
+  lines.push(SENT ? SENT.bull_text : '[unscored — run analyze_claude.py]');
+  lines.push('');
+
+  lines.push('BEAR CASE');
+  lines.push(SENT ? SENT.bear_text : '[unscored — run analyze_claude.py]');
+  lines.push('');
+
+  lines.push('TWEETS');
+
+  if (TWEETS.length === 0) {
+    lines.push('No tweets this week.');
+  } else {
+    TWEETS.forEach(function(t) {
+      lines.push('---');
+      lines.push('@' + t.username + ' \u2014 ' + (t.date || ''));
+      lines.push(t.text);
+      lines.push(
+        'Sentiment: ' + (t.sentiment || 'unscored') +
+        ' | Conviction: ' + (t.conviction || 'unscored') +
+        ' | Rationale: ' + (t.rationale || '\u2014')
+      );
+      lines.push(t.url);
+    });
+    lines.push('---');
+  }
+
+  var blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+  var a    = document.createElement('a');
+  a.href   = URL.createObjectURL(blob);
+  a.download = TICKER + '_' + WEEK + '.txt';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+</script>
+
+</body>
+</html>

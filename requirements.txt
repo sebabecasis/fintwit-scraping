@@ -1,0 +1,7 @@
+requests
+anthropic
+psycopg[binary]
+jinja2
+resend
+pyyaml
+python-dotenv

@@ -1,0 +1,26 @@
+# Secrets — never commit
+.env
+
+# Local SQLite DB (data now lives in Supabase)
+data/*.db
+data/*.db-journal
+data/*.db-wal
+
+# Generated artifacts (rebuilt each run; not source)
+dashboard/
+reports/
+logs/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# macOS
+.DS_Store
+
+# Generated account lists and cached API responses — never publish
+handles/no_tweets.txt
+data/preflight_cache.json
