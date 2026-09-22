@@ -63,6 +63,8 @@ def _week_window(week_arg=None):
     """
     if week_arg:
         ws = date.fromisoformat(week_arg)
+        if ws.weekday() != 0:
+            raise ValueError("--week must be a Monday")
         we = ws + timedelta(days=6)
         return ws.isoformat(), we.isoformat()
 
@@ -89,10 +91,20 @@ def main():
     parser.add_argument("--skip-fetch", action="store_true",
                         help="Skip roster sync and tweet fetch (use when tweets already in DB)")
     parser.add_argument("--no-email", action="store_true",
-                        help="Skip sending the weekly email")
+                        help="Disable all email, including credit alerts")
+    parser.add_argument("--no-publish", action="store_true", help="Disable dashboard publication")
+    parser.add_argument("--deliver-only", type=Path, help="Deliver an existing bundle without database, fetch or model work")
     args = parser.parse_args()
 
+    from src.delivery import deliver_live, save
+    if args.deliver_only:
+        deliver_live(args.deliver_only, no_publish=args.no_publish, no_email=args.no_email)
+        return
+
     week_start, week_end = _week_window(args.week)
+    bundle_path = _ROOT / "reports" / f"{week_start}.bundle.json"
+    if bundle_path.exists():
+        raise RuntimeError(f"Report already exists: use --deliver-only {bundle_path}; no paid work started")
     run_at = datetime.now(timezone.utc).isoformat()
 
     print(f"=== Fintwit Weekly pipeline ===")
@@ -101,7 +113,7 @@ def main():
 
     from src import store, fetch, extract, analyze_compute
     from src.analyze_claude import score_mentions, divergence_summaries, weekly_narrative, new_ticker_summaries
-    from src import report_md, report_html, gist as gist_mod
+    from src import report_md, report_html
     from src import email as email_mod
 
     tweets_fetched      = 0
@@ -198,31 +210,19 @@ def main():
         html_path = report_html.generate_dashboard(week_start, week_end, new_ticker_data=new_ticker_data)
         print(f"    {html_path}")
 
-        # ── 11. Publish gist ──────────────────────────────────────────────────
-        _step(11, "Publish dashboard gist")
-        dashboard_url = None
+        _step(11, "Freeze report and deliver enabled stages")
+        bundle_path = _ROOT / "reports" / f"{week_start}.bundle.json"
+        if bundle_path.exists():
+            raise RuntimeError(f"Report bundle already exists: use --deliver-only {bundle_path}; do not overwrite delivery history")
+        save(bundle_path, {"week_start": week_start, "week_end": week_end,
+            "html_path": str(Path(html_path).resolve()), "html_content": Path(html_path).read_text(), "metrics": metrics,
+            "new_following": new_following, "narrative": narrative, "new_ticker_data": new_ticker_data})
         try:
-            dashboard_url = gist_mod.publish_dashboard(week_start, html_path)
-            print(f"    {dashboard_url}")
-        except Exception as e:
-            print(f"    [WARN] Gist publish failed: {e}")
-
-        _step(12, "Send weekly email")
-        if args.no_email:
-            print("    SKIPPED (--no-email)")
-        else:
-            try:
-                result = email_mod.send_weekly_email(
-                    week_start, week_end, metrics,
-                    new_following=new_following,
-                    narrative=narrative,
-                    new_ticker_summaries=new_ticker_data,
-                    dashboard_url=dashboard_url,
-                )
-                print(f"    Sent — id: {getattr(result, 'id', result)}")
-            except Exception as e:
-                print(f"    [WARN] Email send failed: {e}")
-                notes.append(f"email_failed: {e}")
+            deliver_live(bundle_path, no_publish=args.no_publish, no_email=args.no_email)
+        except Exception as exc:
+            status = "partial"
+            notes.append(f"delivery_{type(exc).__name__}: inspect {bundle_path.with_suffix('.delivery.json')}")
+            print("    Delivery incomplete. Inspect saved receipt before attempting recovery.")
 
     except Exception as e:
         status = "error"
@@ -233,7 +233,7 @@ def main():
         # If the failure was a credit/auth rejection from GetXAPI or Claude,
         # still send an email — with the exact command to resume after topping up.
         kind = classify_credit_error(e)
-        if kind:
+        if kind and not args.no_email:
             # Claude steps all run after the fetch, so tweets are already in the
             # DB — resume with --skip-fetch to avoid re-paying GetXAPI. A GetXAPI
             # failure means we need a full re-run.
@@ -274,7 +274,7 @@ def main():
 
     print(f"\n=== Done. Week {week_start} → {week_end}  |  status={status} ===\n")
 
-    if status == "error":
+    if status != "success":
         sys.exit(1)
 
 

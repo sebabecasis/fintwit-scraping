@@ -247,11 +247,11 @@ def cmd_add_to_list(args):
     import requests
     from src import store
 
-    api_key  = os.environ.get("GETX_API_KEY")
+    api_key  = os.environ.get("GETXAPI_KEY")
     list_id  = os.environ.get("X_LIST_ID", "").rstrip("/").split("/")[-1]
 
     if not api_key:
-        print("Error: GETX_API_KEY not set")
+        print("Error: GETXAPI_KEY not set")
         sys.exit(1)
 
     added = []

@@ -1,40 +1,33 @@
 # Operating FinX Intelligence Agent
 
-This repository powers the portfolio's FinX Intelligence Agent. Read `README.md`, `run_weekly.py`, `railway.json` and `.env.example` before running it. Unlike the other portfolio fixtures, its main workflow uses live paid APIs, writes Postgres, publishes a dashboard gist and sends email. No complete offline fixture mode exists.
+Read README.md, run_weekly.py, railway.json and .env.example. The main workflow uses live paid APIs, Postgres writes, gist publication and email. Documentation/testing requests do not authorize a live run.
 
 ## Agent workflow
 
-1. Establish the requested week, roster, database, desired outputs and whether collection, model calls, gist publication and email delivery are authorized. Reuse standing authorization where its scope matches. Documentation or audit requests do not authorize a live run.
-2. Use Python 3.11 and an isolated environment with `requirements.txt`. Configure secrets privately from `.env.example`: collection uses `GETXAPI_KEY` and `X_LIST_ID`; analysis uses `ANTHROPIC_API_KEY`; storage requires `DATABASE_URL`; delivery uses `RESEND_API_KEY`, `EMAIL_TO` and optionally `RESEND_FROM_EMAIL`; gist publication uses `GITHUB_TOKEN` and `GITHUB_USER`. `X_USERNAME` supports following/preflight tooling. Report missing variable names, never values.
-3. Inspect `config/config.yaml` and the target database/schema before operating. The code uses Supabase Postgres, not a local SQLite database. Database helpers and management commands can migrate schema; do not assume a statistics command is read-only.
-4. Choose an explicit Monday date for reproducible runs. The default window anchors on the most recent Friday and labels its Monday–Sunday week; it can include a Sunday that has not happened yet. Verify fetched-data coverage separately from the displayed period.
-5. After an authorized run, inspect generated Markdown and HTML, compare the reported week with the data, review ticker/sentiment/conviction evidence and inspect delivery outcomes. A success status alone does not prove an email arrived.
-6. Report the output paths, collection/scoring coverage, available cost information, warnings and actual publication/delivery outcomes. Treat roster changes and investor interpretations as proposals for review.
+1. Establish the explicit Monday week, roster, database, output destination and authorization for collection/model calls/publication/email. Default windows follow the most recent Friday's trading week and can include an uncompleted Sunday.
+2. Configure Python 3.11 and requirements.txt. Privately configure GETXAPI_KEY, X_LIST_ID, ANTHROPIC_API_KEY, DATABASE_URL; delivery uses RESEND_API_KEY, EMAIL_TO, optional RESEND_FROM_EMAIL and GITHUB_TOKEN/GITHUB_USER. X_USERNAME supports following tooling. Report missing names, never values.
+3. Inspect config/config.yaml and target database. Importing src.store migrates Postgres: do not import it for an offline check. Management/preflight commands can mutate data or incur API cost.
+4. Run only authorized stages. --skip-fetch still calls models, writes the database and may deliver. --no-email disables weekly email AND credit-alert email. --no-publish disables gist publication. Both together suppress external delivery but are NOT an offline analysis mode.
+5. Inspect retained tweet coverage, scoring, narrative, Markdown and HTML. A saved report bundle freezes delivery inputs; inspect delivery receipts separately. Overall partial/error exits nonzero.
+6. Report actual outputs, estimated costs, missing coverage and delivery receipt. API acceptance is not proof that the recipient read/received the email.
 
-## Execution and recovery
-
-Run from the repository root after configuring the authorized environment:
+## Commands and recovery
 
 ```bash
-python run_weekly.py --week <YYYY-MM-DD>
+python run_weekly.py --week <Monday-YYYY-MM-DD>
+python run_weekly.py --week <Monday-YYYY-MM-DD> --skip-fetch --no-email --no-publish
+python run_weekly.py --deliver-only reports/<Monday-YYYY-MM-DD>.bundle.json
+python -m unittest discover -s tests -v
 ```
 
-To reuse already-fetched tweets after an interrupted analysis:
+--deliver-only avoids collection, scoring and database imports. It runs only enabled publication/email stages and skips those with saved success receipts. Add --no-email and/or --no-publish to constrain it. Both disabled permits a no-network delivery-state check of a supplied bundle.
 
-```bash
-python run_weekly.py --week <YYYY-MM-DD> --skip-fetch
-```
+Successful publication is reused when email has not started. In-flight/uncertain sends are deliberately NOT retried: first reconcile with provider delivery logs, then record the verified outcome in the receipt while preserving an audit copy. No blind resend or deletion of history. Recipient and bundle changes are rejected. To deliberately issue revised content, preserve the original and create a new reviewed bundle.
 
-`--skip-fetch` skips roster sync and fetching only; it still calls models, writes the database, publishes a gist and sends email. `--no-email` skips the normal weekly email only: the error handler can still send a credit/auth alert, and gist publication still runs. Neither flag is a dry run. Do not run the pipeline as a documentation check or assume it is safe merely because these flags are set.
+The direct runner refuses a pre-existing weekly bundle before paid work. Scheduler checks successful DB weeks and refuses existing bundles needing recovery. It uses an exclusive local lock, not a distributed lock: deploy a single worker, persist reports/dashboard on durable storage, and inspect stale locks after crashes. Do not start direct and scheduled runs concurrently.
 
-Outputs include `reports/` Markdown, `dashboard/` HTML and `weekly_runs` database entries. Inspect the paths returned by the actual run. Preserve cached tweets on failure, diagnose the failing stage, and avoid repeating successful paid collection. Rerunning can republish and resend: the direct runner is not protected by the wrapper's successful-week check.
+## Scheduling and remaining limits
 
-## Known operational gaps
+Railway configuration invokes scheduled_run.py at 00:00 UTC Saturday (0 0 * * 6). This repository setting is not proof of the deployed scheduler's configuration. The most-recent-Friday window intentionally covers a trading week; verify actual fetch cutoff.
 
-- README and `scheduled_run.py` describe Sunday 23:30, while `railway.json` specifies `0 0 * * 6` and starts `run_weekly.py` directly. Confirm the real deployed scheduler before claiming its cadence. The wrapper's check does not protect the configured direct Railway entry point or concurrent runs.
-- Gist/email failures can warn while the overall run remains successful. A successful-week check can then prevent retrying failed delivery.
-- There is no flag to disable every external publication/delivery path. A true local/report-only mode needs code changes and tests.
-- `manage.py add-to-list` reads `GETX_API_KEY`, while normal collection uses `GETXAPI_KEY`. Resolve that mismatch before using it.
-- `preflight.py` performs a paid network request when its cache is absent; `smoke_test.py` checks only part of the configuration and prints credential prefixes. Neither is a complete offline test suite.
-
-For documentation checks, parse Python files without importing or executing them. Never import `scheduled_run.py` to inspect it: it has top-level execution. For code changes, add targeted isolated tests around the affected stage, with API/database/email clients replaced by test doubles. Keep real handles, tweets, reports, credentials and database exports out of public commits.
+No full offline end-to-end analytics fixture or distributed coordinator exists. Isolated tests cover delivery suppression, receipts, changed inputs, locking and scheduler import safety. smoke_test.py checks presence only, not connectivity; preflight can make paid requests. Delivery-only recovery is local-file dependent and does not rewrite historical weekly_runs success records; the scheduler will keep surfacing incomplete weeks for explicit reconciliation. Keep tweets, handles, reports, caches, contacts and secrets out of public commits.

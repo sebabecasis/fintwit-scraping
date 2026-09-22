@@ -1,40 +1,38 @@
 #!/usr/bin/env python3
-"""
-scheduled_run.py — idempotent entry point for the launchd schedule.
-
-Invoked by the LaunchAgent on BOTH triggers:
-  • the weekly time trigger (Sunday 23:30), and
-  • run-at-load (every login / boot) as a catch-up guard.
-
-It computes the most recently completed Mon–Sun window (identical logic to
-run_weekly.py), checks weekly_runs for a *successful* run of that week, and
-only runs the pipeline if one is missing. This makes the schedule robust to
-the Mac being asleep or shut down at 23:30 — the next login fills the gap —
-while never double-processing (or double-emailing) a week already done.
-"""
-
+"""Single-host scheduler guard. Persist reports; this is not a distributed lock."""
 import subprocess
 import sys
-from datetime import datetime, timezone
+from pathlib import Path
 
-from run_weekly import _week_window  # reuse the exact week-window logic
-from src import store
 
-week_start, week_end = _week_window()
-stamp = datetime.now(timezone.utc).isoformat()[:19]
+def main():
+    from run_weekly import _week_window
+    from src import store
+    root = Path(__file__).resolve().parent
+    week_start, _ = _week_window()
+    reports = root / "reports"
+    reports.mkdir(exist_ok=True)
+    lock = reports / "scheduled.lock"
+    try:
+        handle = lock.open("x")
+    except FileExistsError:
+        print("Run active or interrupted; inspect scheduled.lock before recovery")
+        return 1
+    with handle:
+        try:
+            with store.get_db() as conn:
+                done = conn.execute("SELECT 1 FROM weekly_runs WHERE week_start = ? AND status = 'success' LIMIT 1", (week_start,)).fetchone()
+            if done:
+                print(f"Week {week_start} already successful; skipping")
+                return 0
+            bundle = reports / f"{week_start}.bundle.json"
+            if bundle.exists():
+                print(f"Existing report: use run_weekly.py --deliver-only {bundle}; inspect delivery receipt first")
+                return 1
+            return subprocess.run([sys.executable, "run_weekly.py", "--week", week_start], cwd=root).returncode
+        finally:
+            lock.unlink()
 
-with store.get_db() as conn:
-    already_done = conn.execute(
-        "SELECT 1 FROM weekly_runs WHERE week_start = ? AND status = 'success' LIMIT 1",
-        (week_start,),
-    ).fetchone()
 
-if already_done:
-    print(f"[{stamp}Z] scheduled_run: week {week_start} → {week_end} "
-          f"already completed successfully — skipping.")
-    sys.exit(0)
-
-print(f"[{stamp}Z] scheduled_run: week {week_start} → {week_end} "
-      f"not yet completed — running pipeline.")
-result = subprocess.run([sys.executable, "run_weekly.py"])
-sys.exit(result.returncode)
+if __name__ == "__main__":
+    raise SystemExit(main())

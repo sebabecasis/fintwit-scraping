@@ -12,6 +12,9 @@ REQUIRED = [
     "EMAIL_TO",
     "X_LIST_ID",
     "X_USERNAME",
+    "DATABASE_URL",
+    "GITHUB_TOKEN",
+    "GITHUB_USER",
 ]
 
 missing = [v for v in REQUIRED if not os.getenv(v)]
@@ -22,6 +25,4 @@ if missing:
 
 print("OK — all env vars loaded:")
 for v in REQUIRED:
-    val = os.getenv(v)
-    masked = val[:4] + "..." if len(val) > 4 else "***"
-    print(f"  {v} = {masked}")
+    print(f"  {v}: present")
