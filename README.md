@@ -1,5 +1,7 @@
 # Fintwit Weekly Analyzer
 
+For agent-assisted operation, start with [AGENTS.md](AGENTS.md). Claude Code loads the same guide through [CLAUDE.md](CLAUDE.md).
+
 Runs every Sunday at 23:30. Pulls $TICKER-bearing tweets from a curated fintwit account list, scores each mention with Claude (sentiment + conviction + rationale), computes weekly metrics, and produces a static HTML dashboard + email summary for Monday-morning reading.
 
 ## Setup
